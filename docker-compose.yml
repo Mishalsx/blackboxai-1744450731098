@@ -1,0 +1,162 @@
+version: '3.8'
+
+services:
+  # Main application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mazufa-app
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://mongodb:27017/mazufa-records
+      - REDIS_URI=redis://redis:6379
+    volumes:
+      - ./uploads:/usr/src/app/uploads
+      - ./.env:/usr/src/app/.env
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - mazufa-network
+
+  # MongoDB service
+  mongodb:
+    image: mongo:latest
+    container_name: mazufa-mongodb
+    restart: unless-stopped
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD}
+      - MONGO_INITDB_DATABASE=mazufa-records
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    networks:
+      - mazufa-network
+
+  # Redis service
+  redis:
+    image: redis:alpine
+    container_name: mazufa-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - mazufa-network
+
+  # Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: mazufa-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/ssl:/etc/nginx/ssl
+      - ./nginx/logs:/var/log/nginx
+    depends_on:
+      - app
+    networks:
+      - mazufa-network
+
+  # MongoDB backup service
+  mongo-backup:
+    image: mongo:latest
+    container_name: mazufa-mongo-backup
+    restart: unless-stopped
+    volumes:
+      - ./backups:/backups
+      - ./scripts/backup.sh:/backup.sh
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/mazufa-records
+      - BACKUP_CRON_SCHEDULE="0 0 * * *" # Daily at midnight
+    entrypoint: ["/bin/sh", "/backup.sh"]
+    depends_on:
+      - mongodb
+    networks:
+      - mazufa-network
+
+  # Monitoring service (Prometheus)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: mazufa-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    networks:
+      - mazufa-network
+
+  # Visualization service (Grafana)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: mazufa-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - mazufa-network
+
+  # Log aggregation (ELK Stack)
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.9.3
+    container_name: mazufa-elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - mazufa-network
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.9.3
+    container_name: mazufa-kibana
+    restart: unless-stopped
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+    networks:
+      - mazufa-network
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:7.9.3
+    container_name: mazufa-logstash
+    restart: unless-stopped
+    volumes:
+      - ./logstash/pipeline:/usr/share/logstash/pipeline
+    depends_on:
+      - elasticsearch
+    networks:
+      - mazufa-network
+
+volumes:
+  mongodb_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+  elasticsearch_data:
+
+networks:
+  mazufa-network:
+    driver: bridge
