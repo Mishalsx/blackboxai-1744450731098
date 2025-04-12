@@ -1,0 +1,138 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          # - alertmanager:9093
+
+# Load rules once and periodically evaluate them
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Node.js application metrics
+  - job_name: 'node-app'
+    static_configs:
+      - targets: ['app:5000']
+    metrics_path: '/metrics'
+    scheme: 'http'
+
+  # MongoDB metrics
+  - job_name: 'mongodb'
+    static_configs:
+      - targets: ['mongodb-exporter:9216']
+
+  # Redis metrics
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+
+  # Nginx metrics
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['nginx-exporter:9113']
+
+  # Node exporter metrics (system metrics)
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Elasticsearch metrics
+  - job_name: 'elasticsearch'
+    static_configs:
+      - targets: ['elasticsearch-exporter:9114']
+    metrics_path: '/metrics'
+
+  # Application health checks
+  - job_name: 'health-checks'
+    metrics_path: '/health'
+    scrape_interval: 30s
+    static_configs:
+      - targets: ['app:5000']
+
+  # Docker metrics
+  - job_name: 'docker'
+    static_configs:
+      - targets: ['docker-exporter:9323']
+
+# Remote write configuration (optional, for long-term storage)
+# remote_write:
+#   - url: "http://remote-storage:9201/write"
+
+# Remote read configuration (optional, for long-term storage)
+# remote_read:
+#   - url: "http://remote-storage:9201/read"
+
+# Storage configuration
+storage:
+  tsdb:
+    path: /prometheus
+    retention:
+      time: 15d
+      size: 50GB
+
+# Web configuration
+web:
+  external_url: http://prometheus:9090
+  page_title: Mazufa Records Monitoring
+  cors:
+    origin: '*'
+
+# Exemplars configuration
+exemplars:
+  max_samples: 100000
+
+# TSDB configuration
+tsdb:
+  out_of_order_time_window: 30m
+
+# Query configuration
+query:
+  max_samples: 50000000
+  timeout: 2m
+  max_concurrent: 20
+
+# Alert configuration
+alerting:
+  alert_relabel_configs:
+    - source_labels: [severity]
+      regex: critical
+      action: keep
+
+# Recording rules
+recording_rules:
+  - record: job:request_latency_seconds:mean5m
+    expr: rate(http_request_duration_seconds_sum[5m]) / rate(http_request_duration_seconds_count[5m])
+    labels:
+      team: platform
+
+# Scrape configurations for service discovery (optional)
+# kubernetes_sd_configs:
+#   - role: pod
+#     namespaces:
+#       names:
+#         - default
+#         - monitoring
+
+# TLS configuration (optional)
+# tls_config:
+#   cert_file: /etc/prometheus/cert.pem
+#   key_file: /etc/prometheus/key.pem
+#   ca_file: /etc/prometheus/ca.pem
+
+# Basic auth configuration (optional)
+# basic_auth:
+#   username: admin
+#   password: secure_password
